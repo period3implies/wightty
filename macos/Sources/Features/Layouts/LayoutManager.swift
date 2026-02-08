@@ -1,7 +1,7 @@
 import Foundation
 
 /// Manages saving and loading of terminal split layouts and SSH connections.
-/// Layouts are stored as JSON in ~/.config/ghostty/layouts/.
+/// Layouts are stored as JSON in ~/.config/wightty/layouts/.
 struct LayoutManager {
     static let shared = LayoutManager()
 
@@ -10,7 +10,7 @@ struct LayoutManager {
 
     init() {
         let configDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/ghostty/layouts")
+            .appendingPathComponent(".config/wightty/layouts")
         self.layoutsDir = configDir
         self.connectionsFile = configDir.appendingPathComponent("ssh_connections.json")
     }

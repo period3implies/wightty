@@ -293,7 +293,7 @@ enum UpdateState: Equatable {
             // Check for semantic version (x.y.z)
             if let semver = Self.extractSemanticVersion(from: version) {
                 let slug = semver.replacingOccurrences(of: ".", with: "-")
-                if let url = URL(string: "https://ghostty.org/docs/install/release-notes/\(slug)") {
+                if let url = URL(string: "https://github.com/period3implies/wightty/releases/tag/v\(slug)") {
                     self = .tagged(url)
                     return
                 }
