@@ -290,6 +290,7 @@ class AppDelegate: NSObject,
 
         // Setup our menu
         setupMenuImages()
+        setupLayoutMenuItems()
 
         // Setup signal handlers
         setupSignals()
@@ -1102,6 +1103,84 @@ class AppDelegate: NSObject,
         dockMenu.addItem(newTab)
     }
 
+    //MARK: - Layout Templates
+
+    /// The submenu for "New Tab from Template >". We keep a reference so we can
+    /// dynamically populate it when it opens.
+    private var layoutTemplateSubmenu: NSMenu?
+
+    /// Inserts layout-related items into the File menu programmatically,
+    /// right after the "New Tab" item.
+    private func setupLayoutMenuItems() {
+        guard let mainMenu = NSApp.mainMenu else { return }
+
+        // Find the File menu
+        guard let fileMenu = mainMenu.items.first(where: {
+            $0.submenu?.title == "File"
+        })?.submenu else { return }
+
+        // Find the "New Tab" menu item index
+        guard let newTabIndex = fileMenu.items.firstIndex(where: {
+            $0.action == #selector(newTab(_:))
+        }) else { return }
+
+        // Create the "New Tab from Template" submenu
+        let templateSubmenu = NSMenu(title: "New Tab from Template")
+        templateSubmenu.delegate = self
+        self.layoutTemplateSubmenu = templateSubmenu
+
+        let templateItem = NSMenuItem(
+            title: "New Tab from Template",
+            action: nil,
+            keyEquivalent: ""
+        )
+        templateItem.submenu = templateSubmenu
+
+        // Create "Save Layout as Template..." item
+        let saveItem = NSMenuItem(
+            title: "Save Layout as Template...",
+            action: #selector(saveLayoutAsTemplate(_:)),
+            keyEquivalent: ""
+        )
+
+        // Insert after "New Tab" (at newTabIndex + 1, then +2 for second item)
+        let insertIndex = newTabIndex + 1
+        fileMenu.insertItem(templateItem, at: insertIndex)
+        fileMenu.insertItem(saveItem, at: insertIndex + 1)
+        fileMenu.insertItem(.separator(), at: insertIndex + 2)
+    }
+
+    @objc func saveLayoutAsTemplate(_ sender: Any?) {
+        // Forward to the focused terminal controller
+        guard let controller = NSApp.keyWindow?.windowController as? TerminalController else { return }
+        controller.saveLayoutAsTemplate(sender)
+    }
+
+    @objc private func newTabFromTemplate(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        guard let layout = LayoutManager.shared.loadLayout(named: name) else { return }
+        guard let app = ghostty.app else { return }
+
+        let tree = LayoutTemplateBuilder.buildTree(from: layout, app: app)
+        let parent = TerminalController.preferredParent?.window
+        _ = TerminalController.newTab(ghostty, from: parent, withSurfaceTree: tree)
+    }
+
+    @objc private func deleteTemplate(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Delete Template \"\(name)\"?"
+        alert.informativeText = "This cannot be undone."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            LayoutManager.shared.deleteLayout(named: name)
+        }
+    }
+
     //MARK: - Global State
 
     func setSecureInput(_ mode: Ghostty.SetSecureInput) {
@@ -1335,6 +1414,64 @@ private enum QuickTerminalState {
     case pendingRestore(QuickTerminalRestorableState)
     /// Controller has been initialized.
     case initialized(QuickTerminalController)
+}
+
+// MARK: NSMenuDelegate (Layout Template Submenu)
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === layoutTemplateSubmenu else { return }
+        menu.removeAllItems()
+
+        let templates = LayoutManager.shared.listLayouts()
+        if templates.isEmpty {
+            let empty = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        } else {
+            for name in templates {
+                let item = NSMenuItem(
+                    title: name,
+                    action: #selector(newTabFromTemplate(_:)),
+                    keyEquivalent: ""
+                )
+                item.representedObject = name
+                item.target = self
+
+                // Add a submenu with a Delete option for each template
+                let sub = NSMenu()
+                let deleteItem = NSMenuItem(
+                    title: "Delete",
+                    action: #selector(deleteTemplate(_:)),
+                    keyEquivalent: ""
+                )
+                deleteItem.representedObject = name
+                deleteItem.target = self
+                sub.addItem(deleteItem)
+                item.submenu = nil  // clicking the item itself opens the template
+
+                menu.addItem(item)
+            }
+
+            menu.addItem(.separator())
+
+            // Add a "Delete..." submenu at the bottom
+            let deleteSubmenu = NSMenu(title: "Delete Template")
+            for name in templates {
+                let deleteItem = NSMenuItem(
+                    title: name,
+                    action: #selector(deleteTemplate(_:)),
+                    keyEquivalent: ""
+                )
+                deleteItem.representedObject = name
+                deleteItem.target = self
+                deleteSubmenu.addItem(deleteItem)
+            }
+            let deleteParent = NSMenuItem(title: "Delete Template", action: nil, keyEquivalent: "")
+            deleteParent.submenu = deleteSubmenu
+            menu.addItem(deleteParent)
+        }
+    }
 }
 
 @globalActor

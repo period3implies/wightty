@@ -612,6 +612,19 @@ extension Ghostty {
             }
         }
 
+        /// Set a user-chosen title, preventing automatic title updates from overwriting it.
+        /// Pass an empty string to clear the user title and revert to automatic naming.
+        func setUserTitle(_ newTitle: String) {
+            if newTitle.isEmpty {
+                let prevTitle = titleFromTerminal ?? "👻"
+                titleFromTerminal = nil
+                setTitle(prevTitle)
+            } else {
+                titleFromTerminal = title
+                title = newTitle
+            }
+        }
+
         // MARK: Local Events
 
         private func localEventHandler(_ event: NSEvent) -> NSEvent? {

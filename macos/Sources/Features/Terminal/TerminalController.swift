@@ -484,6 +484,69 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         return controller
     }
     
+    /// Create a new tab using a pre-built split tree (e.g. from a layout template).
+    static func newTab(
+        _ ghostty: Ghostty.App,
+        from parent: NSWindow? = nil,
+        withSurfaceTree tree: SplitTree<Ghostty.SurfaceView>
+    ) -> TerminalController? {
+        guard let parent,
+              let parentController = parent.windowController as? TerminalController else {
+            return newWindow(ghostty, tree: tree)
+        }
+
+        if let fullscreenStyle = parentController.fullscreenStyle,
+           fullscreenStyle.isFullscreen && !fullscreenStyle.supportsTabs {
+            let alert = NSAlert()
+            alert.messageText = "Cannot Create New Tab"
+            alert.informativeText = "New tabs are unsupported while in non-native fullscreen. Exit fullscreen and try again."
+            alert.addButton(withTitle: "OK")
+            alert.alertStyle = .warning
+            alert.beginSheetModal(for: parent)
+            return nil
+        }
+
+        let controller = TerminalController.init(ghostty, withSurfaceTree: tree)
+        guard let window = controller.window else { return controller }
+
+        if parent.isMiniaturized { parent.deminiaturize(self) }
+
+        if let tg = parent.tabGroup,
+           tg.windows.firstIndex(of: window) != nil {
+            tg.removeWindow(window)
+        }
+
+        if window.tabbingMode != .disallowed {
+            switch ghostty.config.windowNewTabPosition {
+            case "end":
+                if let last = parent.tabGroup?.windows.last {
+                    last.addTabbedWindow(window, ordered: .above)
+                } else {
+                    fallthrough
+                }
+            case "current": fallthrough
+            default:
+                parent.addTabbedWindow(window, ordered: .above)
+            }
+        }
+
+        DispatchQueue.main.async {
+            if !window.styleMask.contains(.fullScreen) &&
+                window.tabGroup?.windows.count ?? 1 == 1 {
+                Self.lastCascadePoint = window.cascadeTopLeft(from: Self.lastCascadePoint)
+            }
+            controller.showWindow(self)
+            window.makeKeyAndOrderFront(self)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            controller.relabelTabs()
+        }
+
+        return controller
+    }
+
     //MARK: - Methods
 
     @objc private func ghosttyConfigDidChange(_ notification: Notification) {
@@ -1315,6 +1378,17 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     @IBAction func toggleTerminalInspector(_ sender: Any?) {
         guard let surface = focusedSurface?.surface else { return }
         ghostty.toggleTerminalInspector(surface: surface)
+    }
+
+    @IBAction func saveLayoutAsTemplate(_ sender: Any?) {
+        guard let window = window else { return }
+        guard let layout = SavedLayout.capture(from: surfaceTree) else { return }
+
+        let sheetView = SaveLayoutSheet { name in
+            LayoutManager.shared.saveLayout(layout, named: name)
+        }
+        let hostingController = NSHostingController(rootView: sheetView)
+        window.contentViewController?.presentAsSheet(hostingController)
     }
 
     //MARK: - TerminalViewDelegate
