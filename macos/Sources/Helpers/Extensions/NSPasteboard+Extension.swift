@@ -45,7 +45,58 @@ extension NSPasteboard {
                 .joined(separator: " ")
         }
 
+        // Check for image content on the pasteboard. If found, save it as a
+        // temporary PNG file and return the path so the user can reference it
+        // (e.g. sharing a screenshot in a CLI conversation).
+        if let imagePath = saveImageFromPasteboard() {
+            return imagePath
+        }
+
         return self.string(forType: .string)
+    }
+
+    /// Checks the pasteboard for image data. If found, saves as a PNG to a
+    /// temporary file and returns a string like "Pasted Image: /path/to/file.png".
+    private func saveImageFromPasteboard() -> String? {
+        // Only proceed if the pasteboard actually has image data but NOT string
+        // data. If it has string data we prefer that (e.g. copying text from a
+        // web page that also has images).
+        let imageTypes: [NSPasteboard.PasteboardType] = [.tiff, .png]
+        guard canReadItem(withDataConformingToTypes: imageTypes.map(\.rawValue)) else {
+            return nil
+        }
+
+        // If there's a string on the pasteboard too, prefer the string since
+        // the user likely copied text, not an image.
+        if string(forType: .string) != nil {
+            return nil
+        }
+
+        // Try to read as NSImage
+        guard let images = readObjects(forClasses: [NSImage.self]) as? [NSImage],
+              let image = images.first else {
+            return nil
+        }
+
+        // Convert to PNG data
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+
+        // Generate a unique filename in /tmp
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let random = Int.random(in: 1000...9999)
+        let filename = "wightty_paste_\(timestamp)_\(random).png"
+        let path = "/tmp/\(filename)"
+
+        do {
+            try pngData.write(to: URL(fileURLWithPath: path))
+            return "Pasted Image: \(path)"
+        } catch {
+            return nil
+        }
     }
 
     /// The pasteboard for the Ghostty enum type.

@@ -97,9 +97,7 @@ fileprivate struct TerminalSplitLeaf: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-            if isSplit {
                 SplitStatusBar(surfaceView: surfaceView)
-            }
             Ghostty.InspectableSurface(
                 surfaceView: surfaceView,
                 isSplit: isSplit)
